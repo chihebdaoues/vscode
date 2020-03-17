@@ -23,6 +23,7 @@ export interface IIconLabelValueOptions {
 	hideIcon?: boolean;
 	extraClasses?: string[];
 	italic?: boolean;
+	strikethrough?: boolean;
 	matches?: IMatch[];
 	labelEscapeNewLines?: boolean;
 	descriptionMatches?: IMatch[];
@@ -92,8 +93,10 @@ class FastLabelNode {
 export class IconLabel extends Disposable {
 
 	private domNode: FastLabelNode;
-	private descriptionContainer: FastLabelNode;
+
 	private nameNode: Label | LabelWithHighlights;
+
+	private descriptionContainer: FastLabelNode;
 	private descriptionNode: FastLabelNode | HighlightedLabel | undefined;
 	private descriptionNodeFactory: () => FastLabelNode | HighlightedLabel;
 
@@ -133,6 +136,10 @@ export class IconLabel extends Disposable {
 
 			if (options.italic) {
 				classes.push('italic');
+			}
+
+			if (options.strikethrough) {
+				classes.push('strikethrough');
 			}
 		}
 

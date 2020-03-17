@@ -20,7 +20,7 @@ import { IModelService } from 'vs/editor/common/services/modelService';
 import { createDecorator, IInstantiationService } from 'vs/platform/instantiation/common/instantiation';
 import { IProgress, IProgressStep } from 'vs/platform/progress/common/progress';
 import { ReplacePattern } from 'vs/workbench/services/search/common/replace';
-import { IFileMatch, IPatternInfo, ISearchComplete, ISearchProgressItem, ISearchConfigurationProperties, ISearchService, ITextQuery, ITextSearchPreviewOptions, ITextSearchMatch, ITextSearchStats, resultIsMatch, ISearchRange, OneLineRange, ITextSearchContext, ITextSearchResult, SearchSortOrder } from 'vs/workbench/services/search/common/search';
+import { IFileMatch, IPatternInfo, ISearchComplete, ISearchProgressItem, ISearchConfigurationProperties, ISearchService, ITextQuery, ITextSearchPreviewOptions, ITextSearchMatch, ITextSearchStats, resultIsMatch, ISearchRange, OneLineRange, ITextSearchContext, ITextSearchResult, SearchSortOrder, SearchCompletionExitCode } from 'vs/workbench/services/search/common/search';
 import { ITelemetryService } from 'vs/platform/telemetry/common/telemetry';
 import { overviewRulerFindMatchForeground, minimapFindMatch } from 'vs/platform/theme/common/colorRegistry';
 import { themeColorFromId } from 'vs/platform/theme/common/themeService';
@@ -139,6 +139,15 @@ export class Match {
 		}
 
 		return thisMatchPreviewLines.join('\n');
+	}
+
+	rangeInPreview() {
+		// convert to editor's base 1 positions.
+		return {
+			...this._fullPreviewRange,
+			startColumn: this._fullPreviewRange.startColumn + 1,
+			endColumn: this._fullPreviewRange.endColumn + 1
+		};
 	}
 
 	fullPreviewLines(): string[] {
@@ -543,15 +552,13 @@ export class FolderMatch extends Disposable {
 
 	replace(match: FileMatch): Promise<any> {
 		return this.replaceService.replace([match]).then(() => {
-			this.doRemove(match, false, true);
+			this.doRemove(match);
 		});
 	}
 
 	replaceAll(): Promise<any> {
 		const matches = this.matches();
-		return this.replaceService.replace(matches).then(() => {
-			matches.forEach(match => this.doRemove(match, false, true));
-		});
+		return this.replaceService.replace(matches).then(() => this.doRemove(matches));
 	}
 
 	matches(): FileMatch[] {
@@ -970,6 +977,7 @@ export class SearchModel extends Disposable {
 	readonly onReplaceTermChanged: Event<void> = this._onReplaceTermChanged.event;
 
 	private currentCancelTokenSource: CancellationTokenSource | null = null;
+	private searchCancelledForNewSearch: boolean = false;
 
 	constructor(
 		@ISearchService private readonly searchService: ISearchService,
@@ -1018,7 +1026,7 @@ export class SearchModel extends Disposable {
 	}
 
 	search(query: ITextQuery, onProgress?: (result: ISearchProgressItem) => void): Promise<ISearchComplete> {
-		this.cancelSearch();
+		this.cancelSearch(true);
 
 
 		this._searchQuery = query;
@@ -1116,7 +1124,12 @@ export class SearchModel extends Disposable {
 
 	private onSearchError(e: any, duration: number): void {
 		if (errors.isPromiseCanceledError(e)) {
-			this.onSearchCompleted(null, duration);
+			this.onSearchCompleted(
+				this.searchCancelledForNewSearch
+					? { exit: SearchCompletionExitCode.NewSearchStarted, results: [] }
+					: null,
+				duration);
+			this.searchCancelledForNewSearch = false;
 		}
 	}
 
@@ -1135,8 +1148,9 @@ export class SearchModel extends Disposable {
 		return this.configurationService.getValue<ISearchConfigurationProperties>('search');
 	}
 
-	cancelSearch(): boolean {
+	cancelSearch(cancelledForNewSearch = false): boolean {
 		if (this.currentCancelTokenSource) {
+			this.searchCancelledForNewSearch = cancelledForNewSearch;
 			this.currentCancelTokenSource.cancel();
 			return true;
 		}

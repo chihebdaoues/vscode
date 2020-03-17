@@ -15,12 +15,12 @@ export interface RemoteTunnel {
 	readonly tunnelRemoteHost: string;
 	readonly tunnelLocalPort?: number;
 	readonly localAddress: string;
-	dispose(): void;
+	dispose(silent?: boolean): void;
 }
 
 export interface TunnelOptions {
 	remoteAddress: { port: number, host: string };
-	localPort?: number;
+	localAddressPort?: number;
 	label?: string;
 }
 

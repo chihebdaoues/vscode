@@ -6,12 +6,12 @@
 import * as nls from 'vs/nls';
 import { Action } from 'vs/base/common/actions';
 import { mixin } from 'vs/base/common/objects';
-import { IEditorInput, EditorInput, IEditorIdentifier, IEditorCommandsContext, CloseDirection, SaveReason, EditorsOrder } from 'vs/workbench/common/editor';
+import { IEditorInput, EditorInput, IEditorIdentifier, IEditorCommandsContext, CloseDirection, SaveReason, EditorsOrder, SideBySideEditorInput } from 'vs/workbench/common/editor';
 import { QuickOpenEntryGroup } from 'vs/base/parts/quickopen/browser/quickOpenModel';
 import { EditorQuickOpenEntry, EditorQuickOpenEntryGroup, IEditorQuickOpenEntry, QuickOpenAction } from 'vs/workbench/browser/quickopen';
 import { IQuickOpenService } from 'vs/platform/quickOpen/common/quickOpen';
 import { IWorkbenchLayoutService } from 'vs/workbench/services/layout/browser/layoutService';
-import { IResourceInput } from 'vs/platform/editor/common/editor';
+import { IResourceEditorInput } from 'vs/platform/editor/common/editor';
 import { IHistoryService } from 'vs/workbench/services/history/common/history';
 import { IKeybindingService } from 'vs/platform/keybinding/common/keybinding';
 import { ICommandService } from 'vs/platform/commands/common/commands';
@@ -23,7 +23,7 @@ import { DisposableStore } from 'vs/base/common/lifecycle';
 import { IWorkspacesService } from 'vs/platform/workspaces/common/workspaces';
 import { IFileDialogService, ConfirmResult } from 'vs/platform/dialogs/common/dialogs';
 import { IWorkingCopyService } from 'vs/workbench/services/workingCopy/common/workingCopyService';
-import { ResourceMap, values } from 'vs/base/common/map';
+import { values } from 'vs/base/common/map';
 
 export class ExecuteCommandAction extends Action {
 
@@ -37,7 +37,7 @@ export class ExecuteCommandAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	run(): Promise<void> {
 		return this.commandService.executeCommand(this.commandId, this.commandArgs);
 	}
 }
@@ -71,10 +71,8 @@ export class BaseSplitEditorAction extends Action {
 		}));
 	}
 
-	run(context?: IEditorIdentifier): Promise<any> {
+	async run(context?: IEditorIdentifier): Promise<void> {
 		splitEditor(this.editorGroupService, this.direction, context);
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -183,7 +181,7 @@ export class JoinTwoGroupsAction extends Action {
 		super(id, label);
 	}
 
-	run(context?: IEditorIdentifier): Promise<any> {
+	async run(context?: IEditorIdentifier): Promise<void> {
 		let sourceGroup: IEditorGroup | undefined;
 		if (context && typeof context.groupId === 'number') {
 			sourceGroup = this.editorGroupService.getGroup(context.groupId);
@@ -198,12 +196,10 @@ export class JoinTwoGroupsAction extends Action {
 				if (targetGroup && sourceGroup !== targetGroup) {
 					this.editorGroupService.mergeGroup(sourceGroup, targetGroup);
 
-					return Promise.resolve(true);
+					break;
 				}
 			}
 		}
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -220,10 +216,8 @@ export class JoinAllGroupsAction extends Action {
 		super(id, label);
 	}
 
-	run(context?: IEditorIdentifier): Promise<any> {
+	async run(): Promise<void> {
 		mergeAllGroups(this.editorGroupService);
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -240,11 +234,9 @@ export class NavigateBetweenGroupsAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		const nextGroup = this.editorGroupService.findGroup({ location: GroupLocation.NEXT }, this.editorGroupService.activeGroup, true);
 		nextGroup.focus();
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -261,10 +253,8 @@ export class FocusActiveGroupAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.editorGroupService.activeGroup.focus();
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -279,13 +269,11 @@ export abstract class BaseFocusGroupAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		const group = this.editorGroupService.findGroup(this.scope, this.editorGroupService.activeGroup, true);
 		if (group) {
 			group.focus();
 		}
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -421,27 +409,26 @@ export class OpenToSideFromQuickOpenAction extends Action {
 		this.class = (preferredDirection === GroupDirection.RIGHT) ? 'codicon-split-horizontal' : 'codicon-split-vertical';
 	}
 
-	run(context: any): Promise<any> {
+	async run(context: unknown): Promise<void> {
 		const entry = toEditorQuickOpenEntry(context);
 		if (entry) {
 			const input = entry.getInput();
 			if (input) {
 				if (input instanceof EditorInput) {
-					return this.editorService.openEditor(input, entry.getOptions(), SIDE_GROUP);
+					await this.editorService.openEditor(input, entry.getOptions(), SIDE_GROUP);
+					return;
 				}
 
-				const resourceInput = input as IResourceInput;
-				resourceInput.options = mixin(resourceInput.options, entry.getOptions());
+				const resourceEditorInput = input as IResourceEditorInput;
+				resourceEditorInput.options = mixin(resourceEditorInput.options, entry.getOptions());
 
-				return this.editorService.openEditor(resourceInput, SIDE_GROUP);
+				await this.editorService.openEditor(resourceEditorInput, SIDE_GROUP);
 			}
 		}
-
-		return Promise.resolve(false);
 	}
 }
 
-export function toEditorQuickOpenEntry(element: any): IEditorQuickOpenEntry | null {
+export function toEditorQuickOpenEntry(element: unknown): IEditorQuickOpenEntry | null {
 
 	// QuickOpenEntryGroup
 	if (element instanceof QuickOpenEntryGroup) {
@@ -472,7 +459,7 @@ export class CloseEditorAction extends Action {
 		super(id, label, 'codicon-close');
 	}
 
-	run(context?: IEditorCommandsContext): Promise<any> {
+	run(context?: IEditorCommandsContext): Promise<void> {
 		return this.commandService.executeCommand(CLOSE_EDITOR_COMMAND_ID, undefined, context);
 	}
 }
@@ -490,7 +477,7 @@ export class CloseOneEditorAction extends Action {
 		super(id, label, 'codicon-close');
 	}
 
-	run(context?: IEditorCommandsContext): Promise<any> {
+	async run(context?: IEditorCommandsContext): Promise<void> {
 		let group: IEditorGroup | undefined;
 		let editorIndex: number | undefined;
 		if (context) {
@@ -517,8 +504,6 @@ export class CloseOneEditorAction extends Action {
 		if (group.activeEditor) {
 			return group.closeEditor(group.activeEditor);
 		}
-
-		return Promise.resolve(false);
 	}
 }
 
@@ -535,27 +520,25 @@ export class RevertAndCloseEditorAction extends Action {
 		super(id, label);
 	}
 
-	async run(): Promise<any> {
-		const activeControl = this.editorService.activeControl;
-		if (activeControl) {
-			const editor = activeControl.input;
-			const group = activeControl.group;
+	async run(): Promise<void> {
+		const activeEditorPane = this.editorService.activeEditorPane;
+		if (activeEditorPane) {
+			const editor = activeEditorPane.input;
+			const group = activeEditorPane.group;
 
 			// first try a normal revert where the contents of the editor are restored
 			try {
-				await editor.revert();
+				await this.editorService.revert({ editor, groupId: group.id });
 			} catch (error) {
 				// if that fails, since we are about to close the editor, we accept that
 				// the editor cannot be reverted and instead do a soft revert that just
 				// enables us to close the editor. With this, a user can always close a
 				// dirty editor even when reverting fails.
-				await editor.revert({ soft: true });
+				await this.editorService.revert({ editor, groupId: group.id }, { soft: true });
 			}
 
 			group.closeEditor(editor);
 		}
-
-		return true;
 	}
 }
 
@@ -573,13 +556,11 @@ export class CloseLeftEditorsInGroupAction extends Action {
 		super(id, label);
 	}
 
-	run(context?: IEditorIdentifier): Promise<any> {
+	async run(context?: IEditorIdentifier): Promise<void> {
 		const { group, editor } = getTarget(this.editorService, this.editorGroupService, context);
 		if (group && editor) {
 			return group.closeEditors({ direction: CloseDirection.LEFT, except: editor });
 		}
-
-		return Promise.resolve(false);
 	}
 }
 
@@ -620,7 +601,7 @@ export abstract class BaseCloseAllAction extends Action {
 		return groupsToClose;
 	}
 
-	async run(): Promise<any> {
+	async run(): Promise<void> {
 
 		// Just close all if there are no dirty editors
 		if (!this.workingCopyService.hasDirty) {
@@ -632,7 +613,7 @@ export abstract class BaseCloseAllAction extends Action {
 		// can review if the files should be changed or not.
 		await Promise.all(this.groupsToClose.map(async groupToClose => {
 			for (const editor of groupToClose.getEditors(EditorsOrder.MOST_RECENTLY_ACTIVE)) {
-				if (editor.isDirty()) {
+				if (editor.isDirty() && !editor.isSaving() /* ignore editors that are being saved */) {
 					return groupToClose.openEditor(editor);
 				}
 			}
@@ -640,40 +621,40 @@ export abstract class BaseCloseAllAction extends Action {
 			return undefined;
 		}));
 
-		const dirtyEditorsToConfirmByName = new Set<string>();
-		const dirtyEditorsToConfirmByResource = new ResourceMap();
+		const dirtyEditorsToConfirm = new Set<string>();
 
 		for (const editor of this.editorService.editors) {
-			if (!editor.isDirty()) {
-				continue; // only interested in dirty editors
+			if (!editor.isDirty() || editor.isSaving()) {
+				continue; // only interested in dirty editors (unless in the process of saving)
 			}
 
-			const resource = editor.getResource();
-			if (resource) {
-				dirtyEditorsToConfirmByResource.set(resource, true);
+			let name: string;
+			if (editor instanceof SideBySideEditorInput) {
+				name = editor.master.getName(); // prefer shorter names by using master's name in this case
 			} else {
-				dirtyEditorsToConfirmByName.add(editor.getName());
+				name = editor.getName();
 			}
+
+			dirtyEditorsToConfirm.add(name);
 		}
 
-		const confirm = await this.fileDialogService.showSaveConfirm([...dirtyEditorsToConfirmByResource.keys(), ...values(dirtyEditorsToConfirmByName)]);
+		const confirm = await this.fileDialogService.showSaveConfirm(values(dirtyEditorsToConfirm));
 		if (confirm === ConfirmResult.CANCEL) {
 			return;
 		}
 
-		let saveOrRevert: boolean;
 		if (confirm === ConfirmResult.DONT_SAVE) {
-			saveOrRevert = await this.editorService.revertAll({ soft: true, includeUntitled: true });
+			await this.editorService.revertAll({ soft: true, includeUntitled: true });
 		} else {
-			saveOrRevert = await this.editorService.saveAll({ reason: SaveReason.EXPLICIT, includeUntitled: true });
+			await this.editorService.saveAll({ reason: SaveReason.EXPLICIT, includeUntitled: true });
 		}
 
-		if (saveOrRevert) {
+		if (!this.workingCopyService.hasDirty) {
 			return this.doCloseAll();
 		}
 	}
 
-	protected abstract doCloseAll(): Promise<any>;
+	protected abstract doCloseAll(): Promise<void>;
 }
 
 export class CloseAllEditorsAction extends BaseCloseAllAction {
@@ -692,8 +673,8 @@ export class CloseAllEditorsAction extends BaseCloseAllAction {
 		super(id, label, 'codicon-close-all', workingCopyService, fileDialogService, editorGroupService, editorService);
 	}
 
-	protected doCloseAll(): Promise<any> {
-		return Promise.all(this.groupsToClose.map(g => g.closeAllEditors()));
+	protected async doCloseAll(): Promise<void> {
+		await Promise.all(this.groupsToClose.map(g => g.closeAllEditors()));
 	}
 }
 
@@ -713,7 +694,7 @@ export class CloseAllEditorGroupsAction extends BaseCloseAllAction {
 		super(id, label, undefined, workingCopyService, fileDialogService, editorGroupService, editorService);
 	}
 
-	protected async doCloseAll(): Promise<any> {
+	protected async doCloseAll(): Promise<void> {
 		await Promise.all(this.groupsToClose.map(group => group.closeAllEditors()));
 
 		this.groupsToClose.forEach(group => this.editorGroupService.removeGroup(group));
@@ -733,11 +714,11 @@ export class CloseEditorsInOtherGroupsAction extends Action {
 		super(id, label);
 	}
 
-	run(context?: IEditorIdentifier): Promise<any> {
+	async run(context?: IEditorIdentifier): Promise<void> {
 		const groupToSkip = context ? this.editorGroupService.getGroup(context.groupId) : this.editorGroupService.activeGroup;
-		return Promise.all(this.editorGroupService.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE).map(g => {
+		await Promise.all(this.editorGroupService.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE).map(async g => {
 			if (groupToSkip && g.id === groupToSkip.id) {
-				return Promise.resolve();
+				return;
 			}
 
 			return g.closeAllEditors();
@@ -759,13 +740,11 @@ export class CloseEditorInAllGroupsAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		const activeEditor = this.editorService.activeEditor;
 		if (activeEditor) {
-			return Promise.all(this.editorGroupService.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE).map(g => g.closeEditor(activeEditor)));
+			await Promise.all(this.editorGroupService.getGroups(GroupsOrder.MOST_RECENTLY_ACTIVE).map(g => g.closeEditor(activeEditor)));
 		}
-
-		return Promise.resolve();
 	}
 }
 
@@ -780,7 +759,7 @@ export class BaseMoveGroupAction extends Action {
 		super(id, label);
 	}
 
-	run(context?: IEditorIdentifier): Promise<any> {
+	async run(context?: IEditorIdentifier): Promise<void> {
 		let sourceGroup: IEditorGroup | undefined;
 		if (context && typeof context.groupId === 'number') {
 			sourceGroup = this.editorGroupService.getGroup(context.groupId);
@@ -794,8 +773,6 @@ export class BaseMoveGroupAction extends Action {
 				this.editorGroupService.moveGroup(sourceGroup, targetGroup, this.direction);
 			}
 		}
-
-		return Promise.resolve(true);
 	}
 
 	private findTargetGroup(sourceGroup: IEditorGroup): IEditorGroup | undefined {
@@ -891,10 +868,8 @@ export class MinimizeOtherGroupsAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.editorGroupService.arrangeGroups(GroupsArrangement.MINIMIZE_OTHERS);
-
-		return Promise.resolve(false);
 	}
 }
 
@@ -907,10 +882,8 @@ export class ResetGroupSizesAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.editorGroupService.arrangeGroups(GroupsArrangement.EVEN);
-
-		return Promise.resolve(false);
 	}
 }
 
@@ -923,10 +896,8 @@ export class ToggleGroupSizesAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.editorGroupService.arrangeGroups(GroupsArrangement.TOGGLE);
-
-		return Promise.resolve(false);
 	}
 }
 
@@ -945,13 +916,11 @@ export class MaximizeGroupAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		if (this.editorService.activeEditor) {
 			this.editorGroupService.arrangeGroups(GroupsArrangement.MINIMIZE_OTHERS);
 			this.layoutService.setSideBarHidden(true);
 		}
-
-		return Promise.resolve(false);
 	}
 }
 
@@ -966,23 +935,21 @@ export abstract class BaseNavigateEditorAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		const result = this.navigate();
 		if (!result) {
-			return Promise.resolve(false);
+			return;
 		}
 
 		const { groupId, editor } = result;
 		if (!editor) {
-			return Promise.resolve(false);
+			return;
 		}
 
 		const group = this.editorGroupService.getGroup(groupId);
 		if (group) {
-			return group.openEditor(editor);
+			await group.openEditor(editor);
 		}
-
-		return Promise.resolve();
 	}
 
 	protected abstract navigate(): IEditorIdentifier | undefined;
@@ -1157,10 +1124,8 @@ export class NavigateForwardAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.forward();
-
-		return Promise.resolve();
 	}
 }
 
@@ -1173,10 +1138,8 @@ export class NavigateBackwardsAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.back();
-
-		return Promise.resolve();
 	}
 }
 
@@ -1189,10 +1152,8 @@ export class NavigateToLastEditLocationAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.openLastEditLocation();
-
-		return Promise.resolve();
 	}
 }
 
@@ -1205,10 +1166,8 @@ export class NavigateLastAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.last();
-
-		return Promise.resolve();
 	}
 }
 
@@ -1225,10 +1184,8 @@ export class ReopenClosedEditorAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.reopenLastClosedEditor();
-
-		return Promise.resolve(false);
 	}
 }
 
@@ -1246,15 +1203,13 @@ export class ClearRecentFilesAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 
 		// Clear global recently opened
 		this.workspacesService.clearRecentlyOpened();
 
 		// Clear workspace specific recently opened
 		this.historyService.clearRecentlyOpened();
-
-		return Promise.resolve(false);
 	}
 }
 
@@ -1312,12 +1267,10 @@ export class BaseQuickOpenEditorAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		const keybindings = this.keybindingService.lookupKeybindings(this.id);
 
 		this.quickOpenService.show(this.prefix, { quickNavigateConfiguration: { keybindings } });
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -1338,8 +1291,8 @@ export class QuickOpenPreviousRecentlyUsedEditorAction extends BaseQuickOpenEdit
 
 export class QuickOpenNextRecentlyUsedEditorAction extends BaseQuickOpenEditorAction {
 
-	static readonly ID = 'workbench.action.quickOpenNextRecentlyUsedEditor';
-	static readonly LABEL = nls.localize('quickOpenNextRecentlyUsedEditor', "Quick Open Next Recently Used Editor");
+	static readonly ID = 'workbench.action.quickOpenLeastRecentlyUsedEditor';
+	static readonly LABEL = nls.localize('quickOpenLeastRecentlyUsedEditor', "Quick Open Least Recently Used Editor");
 
 	constructor(
 		id: string,
@@ -1366,10 +1319,10 @@ export class QuickOpenPreviousRecentlyUsedEditorInGroupAction extends BaseQuickO
 	}
 }
 
-export class QuickOpenNextRecentlyUsedEditorInGroupAction extends BaseQuickOpenEditorAction {
+export class QuickOpenLeastRecentlyUsedEditorInGroupAction extends BaseQuickOpenEditorAction {
 
-	static readonly ID = 'workbench.action.quickOpenNextRecentlyUsedEditorInGroup';
-	static readonly LABEL = nls.localize('quickOpenNextRecentlyUsedEditorInGroup', "Quick Open Next Recently Used Editor in Group");
+	static readonly ID = 'workbench.action.quickOpenLeastRecentlyUsedEditorInGroup';
+	static readonly LABEL = nls.localize('quickOpenLeastRecentlyUsedEditorInGroup', "Quick Open Least Recently Used Editor in Group");
 
 	constructor(
 		id: string,
@@ -1395,12 +1348,10 @@ export class QuickOpenPreviousEditorFromHistoryAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		const keybindings = this.keybindingService.lookupKeybindings(this.id);
 
 		this.quickOpenService.show(undefined, { quickNavigateConfiguration: { keybindings } });
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -1417,10 +1368,8 @@ export class OpenNextRecentlyUsedEditorAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.openNextRecentlyUsedEditor();
-
-		return Promise.resolve();
 	}
 }
 
@@ -1437,10 +1386,8 @@ export class OpenPreviousRecentlyUsedEditorAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.openPreviouslyUsedEditor();
-
-		return Promise.resolve();
 	}
 }
 
@@ -1458,10 +1405,8 @@ export class OpenNextRecentlyUsedEditorInGroupAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.openNextRecentlyUsedEditor(this.editorGroupsService.activeGroup.id);
-
-		return Promise.resolve();
 	}
 }
 
@@ -1479,10 +1424,8 @@ export class OpenPreviousRecentlyUsedEditorInGroupAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.historyService.openPreviouslyUsedEditor(this.editorGroupsService.activeGroup.id);
-
-		return Promise.resolve();
 	}
 }
 
@@ -1499,12 +1442,10 @@ export class ClearEditorHistoryAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 
 		// Editor history
 		this.historyService.clear();
-
-		return Promise.resolve(true);
 	}
 }
 
@@ -1771,10 +1712,8 @@ export class BaseCreateEditorGroupAction extends Action {
 		super(id, label);
 	}
 
-	run(): Promise<any> {
+	async run(): Promise<void> {
 		this.editorGroupService.addGroup(this.editorGroupService.activeGroup, this.direction, { activate: true });
-
-		return Promise.resolve(true);
 	}
 }
 

@@ -42,6 +42,7 @@ import { IHostService } from 'vs/workbench/services/host/browser/host';
 import { joinPath } from 'vs/base/common/resources';
 import { Registry } from 'vs/platform/registry/common/platform';
 import { IOutputChannelRegistry, Extensions } from 'vs/workbench/services/output/common/output';
+import { INativeWorkbenchEnvironmentService } from 'vs/workbench/services/environment/electron-browser/environmentService';
 
 export class ExtensionHostProcessWorker implements IExtensionHostStarter {
 
@@ -78,7 +79,7 @@ export class ExtensionHostProcessWorker implements IExtensionHostStarter {
 		@INotificationService private readonly _notificationService: INotificationService,
 		@IElectronService private readonly _electronService: IElectronService,
 		@ILifecycleService private readonly _lifecycleService: ILifecycleService,
-		@IWorkbenchEnvironmentService private readonly _environmentService: IWorkbenchEnvironmentService,
+		@IWorkbenchEnvironmentService private readonly _environmentService: INativeWorkbenchEnvironmentService,
 		@ITelemetryService private readonly _telemetryService: ITelemetryService,
 		@ILogService private readonly _logService: ILogService,
 		@ILabelService private readonly _labelService: ILabelService,
@@ -199,7 +200,7 @@ export class ExtensionHostProcessWorker implements IExtensionHostStarter {
 				onDebouncedOutput(output => {
 					const inspectorUrlMatch = output.data && output.data.match(/ws:\/\/([^\s]+:(\d+)\/[^\s]+)/);
 					if (inspectorUrlMatch) {
-						if (!this._environmentService.isBuilt) {
+						if (!this._environmentService.isBuilt && !this._isExtensionDevTestFromCli) {
 							console.log(`%c[Extension Host] %cdebugger inspector at chrome-devtools://devtools/bundled/inspector.html?experiments=true&v8only=true&ws=${inspectorUrlMatch[1]}`, 'color: blue', 'color:');
 						}
 						if (!this._inspectPort) {
@@ -207,9 +208,11 @@ export class ExtensionHostProcessWorker implements IExtensionHostStarter {
 							this._onDidSetInspectPort.fire();
 						}
 					} else {
-						console.group('Extension Host');
-						console.log(output.data, ...output.format);
-						console.groupEnd();
+						if (!this._isExtensionDevTestFromCli) {
+							console.group('Extension Host');
+							console.log(output.data, ...output.format);
+							console.groupEnd();
+						}
 					}
 				});
 
@@ -292,22 +295,22 @@ export class ExtensionHostProcessWorker implements IExtensionHostStarter {
 		const expected = this._environmentService.debugExtensionHost.port;
 		const port = await findFreePort(expected, 10 /* try 10 ports */, 5000 /* try up to 5 seconds */);
 
-		if (!port) {
-			console.warn('%c[Extension Host] %cCould not find a free port for debugging', 'color: blue', 'color:');
-			return 0;
+		if (!this._isExtensionDevTestFromCli) {
+			if (!port) {
+				console.warn('%c[Extension Host] %cCould not find a free port for debugging', 'color: blue', 'color:');
+			} else {
+				if (port !== expected) {
+					console.warn(`%c[Extension Host] %cProvided debugging port ${expected} is not free, using ${port} instead.`, 'color: blue', 'color:');
+				}
+				if (this._isExtensionDevDebugBrk) {
+					console.warn(`%c[Extension Host] %cSTOPPED on first line for debugging on port ${port}`, 'color: blue', 'color:');
+				} else {
+					console.info(`%c[Extension Host] %cdebugger listening on port ${port}`, 'color: blue', 'color:');
+				}
+			}
 		}
 
-		if (port !== expected) {
-			console.warn(`%c[Extension Host] %cProvided debugging port ${expected} is not free, using ${port} instead.`, 'color: blue', 'color:');
-		}
-		if (this._isExtensionDevDebugBrk) {
-			console.warn(`%c[Extension Host] %cSTOPPED on first line for debugging on port ${port}`, 'color: blue', 'color:');
-		} else {
-			console.info(`%c[Extension Host] %cdebugger listening on port ${port}`, 'color: blue', 'color:');
-		}
-		return port;
-
-
+		return port || 0;
 	}
 
 	private _tryExtHostHandshake(): Promise<PersistentProtocol> {
